@@ -1,19 +1,149 @@
+class Peer {
+    #id;
+    #websocket;
+    #username;
+    #availableUsers;
+    #localStream;
+    #rtcPeerConnectionConfig
 
-let localStream;
-let remoteStream;
+    constructor(localStream, websocket, rtcPeerConnectionConfig) {
+        this.#localStream = localStream;
+        this.#websocket = websocket;
+        this.#rtcPeerConnectionConfig = rtcPeerConnectionConfig;
+    }
+
+    static async from(url, rtcPeerConnectionConfig) {
+        try {
+            const localStream = await navigator
+                .mediaDevices
+                .getUserMedia({
+                    video: true,
+                    audio: true
+                });
+            const websocket = new WebSocket(url);
+            return new Peer(localStream, websocket, rtcPeerConnectionConfig);
+        } catch (error) {
+            // TODO 
+        }
+    }
+
+    async #createPeerConnection() {
+        try {
+            const peerConnection = new RTCPeerConnection(this.#rtcPeerConnectionConfig);
+            const remoteStream = new MediaStream();
+            this.#localStream.getTracks().forEach((track) => {
+                peerConnection.addTrack(track, this.#localStream);
+            });
+            peerConnection.ontrack = (event) => {
+                event.streams[0].getTracks().forEach((track) => {
+                    remoteStream.addTrack(track);
+                });
+            };
+            return { peerConnection, remoteStream };
+        } catch (error) {
+            console.log("\r\n\r\n");
+            console.error(error);
+            console.log("\r\n\r\n");
+        }
+    }
+
+    async createOffer(remoteUser) {
+        try {
+            const { peerConnection, remoteStream } = await this.#createPeerConnection();
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    this.#websocket.send(JSON.stringify({
+                        type: "new-ice-candidate",
+                        to: remoteUser,
+                        data: event.candidate
+                    }));
+                }
+            };
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            this.#websocket.send(JSON.stringify({
+                type: "offer",
+                to: remoteUser,
+                data: offer
+            }));
+            return { peerConnection, remoteStream };
+        } catch (error) {
+            console.log("\r\n\r\n");
+            console.error(error);
+            console.log("\r\n\r\n");
+        }
+    }
+
+    async createAnswer(remoteUser, offer) {
+        try {
+            const { peerConnection, remoteStream } = await this.#createPeerConnection();
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    this.#websocket.send(JSON.stringify({
+                        type: "new-ice-candidate",
+                        to: remoteUser,
+                        data: event.candidate
+                    }));
+                }
+            };
+            await peerConnection.setRemoteDescription(offer);
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            this.#websocket.send(JSON.stringify({
+                type: "answer",
+                to: remoteUser,
+                data: answer
+            }));
+            return { peerConnection, remoteStream };
+        } catch (error) {
+            console.log("\r\n\r\n");
+            console.error(error);
+            console.log("\r\n\r\n");
+        }
+    }
+
+    assignId(newId) {
+        // TODO 
+        this.#id = newId;
+    }
+
+    assignUsername(newUsername) {
+        // TODO: is username valid
+        this.#username = newUsername;
+    }
+
+    assignAvailableUsers(availableUsers) {
+        this.#availableUsers = availableUsers.filter((user) => user !== this.#username);
+    }
+
+    id() {
+        return this.#id;
+    }
+
+    websocket() {
+        return this.#websocket;
+    }
+
+    username() {
+        return this.#username;
+    }
+
+    availableUsers() {
+        return this.#availableUsers;
+    }
+
+    localStream() {
+        return this.#localStream;
+    }
+}
+
 let localPeer = document.getElementById('local-peer');
 let remotePeer = document.getElementById('remote-peer');
 let availableUsersElement = document.getElementById('available-users');
 let usernameElement = document.getElementById('username');
-let peerConnection;
+let peerConnection, remoteStream;
 
-// signaling 
-let id;
-let ws;
-let username;
-let availableUsers = [];
-
-const servers = {
+const RTC_PEER_CONNECTION_CONFIG = {
     iceServers: [
         {
             urls: [
@@ -27,181 +157,90 @@ const servers = {
     ]
 };
 
-let isCaller = false;
-let targetUser = null;
+const URL = "ws://localhost:8000";
 
-async function init() {
+async function main() {
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localPeer.srcObject = localStream;
-        ws = new WebSocket("ws://localhost:8000");
-
-        ws.onmessage = async (message) => {
-            let data = JSON.parse(message.data);
-            console.log("Received message:", data);
-            
-            if (data.type === "id") {
-                id = data.id;
-                console.log("Assigned ID:", id);
-                username = prompt("Enter your username:");
-                ws.send(JSON.stringify({ type: "set-username", id: id, username: username }));
-            } else if (data.type === "userlist") {
-                availableUsers = data.users.filter(user => user !== username);
-                updateAvailableUsersList();
-            } else if (data.type === "username-accepted") {
-                username = data.username;
-                usernameElement.textContent = `Username: ${username}`;
-            } else if (data.type === "webrtc-signaling") {
-                await handleWebRTCSignaling(data);
-            } else {
-                // TODO: handle error messages 
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
-        };
-
+        const peer = await Peer.from(URL, RTC_PEER_CONNECTION_CONFIG);
+        localPeer.srcObject = peer.localStream();
+        peer.websocket().onmessage = async (message) => {
+            await onMessageHandler(peer, message.data);
+        }
+        peer.websocket().onerror = async (message) => {
+            console.error(message);
+        }
     } catch (error) {
-        console.error("Error initializing:", error);
-        alert("Error accessing camera/microphone: " + error.message);
+        console.error(error);
+        alert(error.message || "Unknow Error");
     }
 }
 
-function updateAvailableUsersList() {
+main();
+
+async function onMessageHandler(peer, data) {
+    const message = JSON.parse(data);
+
+    console.log("\r\n\r\n");
+    console.log(message);
+    console.log("\r\n\r\n");
+
+    switch (message.type) {
+        case "id":
+            peer.assignId(message.id);
+            const username = prompt("Enter your username:");
+            peer.websocket().send(JSON.stringify({
+                type: "set-username",
+                username: username,
+            }));
+            break;
+        case "user-list":
+            peer.assignAvailableUsers(message.users);
+            updateAvailableUsersList(peer);
+            break;
+        case "username-accepted":
+            peer.assignUsername(message.username);
+            usernameElement.textContent = `Username: ${peer.username()}`
+            break;
+        case "offer":
+            const data = await peer.createAnswer(message.from, message.data);
+            peerConnection = data.peerConnection;
+            remoteStream = data.remoteStream;
+            remotePeer.srcObject = remoteStream;
+            break;
+        case "answer":
+            if (peerConnection && !peerConnection.currentRemoteDescription) {
+                await peerConnection.setRemoteDescription(message.data);
+            }
+            break;
+        case "new-ice-candidate":
+            if (peerConnection) {
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(message.data));
+                } catch (error) {
+                    console.error("Error adding ICE candidate:", error);
+                }
+            }
+            break;
+        default:
+        // TODO
+    }
+}
+
+function updateAvailableUsersList(peer) {
     availableUsersElement.innerHTML = "";
-    availableUsers.forEach(user => {
+    peer.availableUsers().forEach(user => {
         let li = document.createElement("li");
         li.textContent = user;
-        li.style.cursor = "pointer";
-        li.style.padding = "5px";
-        li.style.margin = "2px";
-        li.style.backgroundColor = "#f0f0f0";
-        li.onclick = () => {
-            console.log(`Starting call with ${user}`);
-            targetUser = user;
-            isCaller = true;
-            createOffer(user);
+        li.onclick = async () => {
+            try {
+                const data = await peer.createOffer(user);
+                peerConnection = data.peerConnection;
+                remoteStream = data.remoteStream;
+                remotePeer.srcObject = remoteStream;
+            } catch (error) {
+                console.error(error);
+            }
         };
         availableUsersElement.appendChild(li);
     });
 }
-
-async function handleWebRTCSignaling(data) {
-    const signalingData = data.data;
-    
-    if (signalingData.type === "offer") {
-        console.log("Received offer from:", data.from);
-        targetUser = data.from;
-        isCaller = false;
-        await createAnswer(targetUser, signalingData);
-    } else if (signalingData.type === "answer") {
-        console.log("Received answer from:", data.from);
-        await addAnswer(signalingData);
-    } else if (signalingData.type === "ice-candidate") {
-        console.log("Received ICE candidate from:", data.from);
-        if (peerConnection) {
-            try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(signalingData.candidate));
-            } catch (error) {
-                console.error("Error adding ICE candidate:", error);
-            }
-        }
-    }
-}
-
-async function createPeerConnection() {
-    peerConnection = new RTCPeerConnection(servers);
-    remoteStream = new MediaStream();
-    remotePeer.srcObject = remoteStream;
-
-    localStream.getTracks().forEach((track) => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    peerConnection.ontrack = (event) => {
-        console.log("Received remote tracks");
-        event.streams[0].getTracks().forEach((track) => {
-            remoteStream.addTrack(track);
-        });
-    };
-
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            console.log("New ICE candidate:", event.candidate);
-            ws.send(JSON.stringify({
-                type: "webrtc-signaling",
-                id: id,
-                target: targetUser,
-                data: {
-                    type: "ice-candidate",
-                    candidate: event.candidate
-                }
-            }));
-        }
-    };
-
-    peerConnection.onconnectionstatechange = () => {
-        console.log("Connection state:", peerConnection.connectionState);
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log("ICE connection state:", peerConnection.iceConnectionState);
-    };
-}
-
-async function createOffer(targetUser) {
-    await createPeerConnection();
-    
-    try {
-        let offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-
-        console.log("Created offer:", offer);
-        
-        ws.send(JSON.stringify({
-            type: "webrtc-signaling",
-            id: id,
-            target: targetUser,
-            data: offer
-        }));
-        
-    } catch (error) {
-        console.error("Error creating offer:", error);
-    }
-}
-
-async function createAnswer(remoteUser, offer) {
-    await createPeerConnection();
-    
-    try {
-        await peerConnection.setRemoteDescription(offer);
-        let answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-
-        console.log("Created answer:", answer);
-        
-        ws.send(JSON.stringify({
-            type: "webrtc-signaling",
-            id: id,
-            target: remoteUser,
-            data: answer
-        }));
-        
-    } catch (error) {
-        console.error("Error creating answer:", error);
-    }
-}
-
-async function addAnswer(answer) {
-    try {
-        if (!peerConnection.currentRemoteDescription) {
-            await peerConnection.setRemoteDescription(answer);
-            console.log("Answer set successfully");
-        }
-    } catch (error) {
-        console.error("Error adding answer:", error);
-    }
-}
-
-init();
