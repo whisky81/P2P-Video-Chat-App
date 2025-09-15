@@ -11,17 +11,14 @@ class SignalingServer {
     #httpServer;
 
     constructor(host, port, signalingTypes) {
-        try {
-            // TODO: check port, signalingTypes
-            this.#host = host;
-            this.#port = port;
-            this.#signalingTypes = signalingTypes;
-            this.#connectionList = [];
-            this.#nextID = Date.now();
-        } catch (error) {
-            // TODO 
+        if (!this.#validateInputArgs(host, port, signalingTypes)) {
+            throw new Error("Illegal arguments");
         }
-
+        this.#host = host.trim();
+        this.#port = port;
+        this.#signalingTypes = signalingTypes;
+        this.#connectionList = [];
+        this.#nextID = Date.now();
     }
 
     start() {
@@ -32,6 +29,16 @@ class SignalingServer {
         } catch (error) {
             // TODO
         }
+    }
+
+    #validateInputArgs(host, port, signalingTypes) {
+        const octet = host.trim().split(".");
+        if (octet.length !== 4) return false;
+        for (let num of octet) {
+            num = Number(num);
+            if (num < 0 || num > 255) return false;
+        }
+        return port >= 1024 && port < 65536 && signalingTypes && signalingTypes.length > 0;
     }
 
     #setUpHTTPServer() {
@@ -167,6 +174,10 @@ class SignalingServer {
 
     port() {
         return this.#port;
+    }
+
+    httpServer() {
+        return this.#httpServer;
     }
 
     static log(text) {
