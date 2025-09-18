@@ -160,7 +160,7 @@ class SignalingServer {
         if (!message.hasOwnProperty("username")) {
             throw new Error("Invalid message: missing 'username'");
         }
-        const originalUsername = message.username.trim().toLowerCase();
+        const originalUsername = message.username ? message.username.trim().toLowerCase() : "peer";
         if (originalUsername.length === 0) {
             throw new Error("Invalid message: username cannot be empty");
         }
