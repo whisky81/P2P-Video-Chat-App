@@ -19,4 +19,4 @@ export const MEDIA_CONSTRAINTS = {
         autoGainControl: true
     }
 };
-export const SIGNALING_SERVER_URL = "wss://defc9e396a06.ngrok-free.app"; // will be update later when start signaling server
+export const SIGNALING_SERVER_URL = "wss://296a605807e6.ngrok-free.app"; // will be update later when start signaling server

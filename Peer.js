@@ -126,6 +126,15 @@ class Peer {
                 }, 1000);
             }
         };
+        // this.#peerConnection.onicecandidate = (event) => {
+        //     if (event.candidate) {
+        //         this.#websocket.send(JSON.stringify({
+        //             type: "new-ice-candidate",
+        //             to: remoteUser,
+        //             data: event.candidate
+        //         }));
+        //     }
+        // };
     }
 
     #onConnectionStateChange() {
@@ -149,6 +158,22 @@ class Peer {
         //         };
         //     }
         // });
+        //
+        // or
+        //
+        // if (this.#peerConnection.iceGatheringState !== 'complete') {
+        //     await new Promise((resolve) => {
+        //         const checkState = () => {
+        //             if (this.#peerConnection.iceGatheringState === 'complete') {
+        //                 resolve();
+        //             } else {
+        //                 this.#peerConnection.addEventListener('icegatheringstatechange', checkState, { once: true });
+        //             }
+        //         };
+        //         checkState();
+        //     });
+        // }
+        //
         // or send sdp immediately
         this.#websocket.send(JSON.stringify({
             type: messageType,

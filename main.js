@@ -79,8 +79,8 @@ async function init() {
                 showError(error);
             }
         });
-        nextBtn.addEventListener('click', () => {
-
+        nextBtn.addEventListener('click', async () => {
+            await randomCall(peer);
         });
     } catch (error) {
         if (error.name === "OverconstrainedError") {
@@ -116,15 +116,7 @@ async function onMessageHandler(peer, data) {
                 usernameElement.textContent = `Username: ${peer.profile().name()}`
                 break;
             case "offer":
-                await peer.createAnswer(message.from, message.data);
-                remotePeer.srcObject = peer.remoteStream();
-                remoteUserElement.textContent = `Connected to ${message.from || "unknown"}`;
-                // best way to handle instead of using setTimeout
-                setTimeout(() => {
-                    if (remotePeer.srcObject) {
-                        remotePeer.play().catch(e => showError(e));
-                    }
-                }, 1000);
+                await inComingCall(peer, message);
                 break;
             case "answer":
                 if (!peer.isClosed() && peer.peerConnection() && !peer.peerConnection().currentRemoteDescription) {
@@ -135,8 +127,6 @@ async function onMessageHandler(peer, data) {
                 if (!peer.isClosed() && peer.peerConnection() && message.data) {
                     const newIceCandidate = new RTCIceCandidate(message.data);
                     await peer.peerConnection().addIceCandidate(newIceCandidate);
-                    // or
-                    // await peer.peerConnection().addIceCandidate(message.data);
                 }
                 break;
             default:
@@ -181,4 +171,30 @@ function showError(message) {
     const msg = document.getElementById("error-message");
     msg.textContent = message;
     popup.style.display = "block";
+}
+
+async function inComingCall(peer, message) {
+    const accept = confirm(`Got a call from ${message.from}`);
+    if (!accept) return;
+    await peer.createAnswer(message.from, message.data);
+    remotePeer.srcObject = peer.remoteStream();
+    remoteUserElement.textContent = `Connected to ${message.from || "unknown"}`;
+    setTimeout(() => {
+        if (remotePeer.srcObject) {
+            remotePeer.play().catch(e => showError(e));
+        }
+    }, 1000);
+}
+
+async function randomCall(peer) {
+    try {
+        const len = peer.profile().availableUsers().length;
+        const randomNumber = Math.floor(Math.random() * len);
+        const stranger = peer.profile().availableUsers()[randomNumber];
+        await peer.call(stranger);
+        remotePeer.srcObject = peer.remoteStream();
+        remoteUserElement.textContent = `Connected to ${stranger}`;
+    } catch (error) {
+        showError(error);
+    }
 }
