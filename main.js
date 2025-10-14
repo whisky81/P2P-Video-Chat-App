@@ -13,15 +13,21 @@ const nextBtn = document.getElementById('next');
 const popup = document.getElementById("error-popup");
 const closeBtn = document.getElementById("close-popup");
 
+const messages = document.getElementById("messages");
+const message = document.getElementById("message");
+const sendButton = document.getElementById("send");
+
 init();
 
 async function init() {
     try {
+        sendButton.disabled = true;
         setUpClosePopupEventHandler();
         const peer = await Peer.from(
             Config.SIGNALING_SERVER_URL,
             Config.RTC_PEER_CONNECTION_CONFIG,
             Config.MEDIA_CONSTRAINTS);
+        window.peer = peer;
         localPeer.srcObject = peer.localStream();
         //
         localPeer.muted = true;
@@ -117,6 +123,7 @@ async function onMessageHandler(peer, data) {
                 break;
             case "offer":
                 await inComingCall(peer, message);
+                setUpMessageChannel(peer);
                 break;
             case "answer":
                 if (!peer.isClosed() && peer.peerConnection() && !peer.peerConnection().currentRemoteDescription) {
@@ -147,6 +154,7 @@ function updateAvailableUsersList(peer) {
                 await peer.call(user);
                 remotePeer.srcObject = peer.remoteStream();
                 remoteUserElement.textContent = `Connected to ${user}`;
+                setUpMessageChannel(peer);
             } catch (error) {
                 showError(error.message);
             }
@@ -196,5 +204,46 @@ async function randomCall(peer) {
         remoteUserElement.textContent = `Connected to ${stranger}`;
     } catch (error) {
         showError(error);
+    }
+}
+
+function setUpMessageChannel(peer) {
+    messages.innerHTML = "";
+    message.value = "";
+    const messageChannel = peer.messageChannel();
+    if (messageChannel) {
+        dataChannelEventListener(messageChannel);
+    } else {
+        peer.peerConnection().ondatachannel = (event) => {
+            dataChannelEventListener(event.channel);
+        }
+    }
+    
+}
+
+function dataChannelEventListener(messageChannel) {
+    messageChannel.onopen = () => {
+        const state = messageChannel.readyState;
+        console.log(state);
+        if (state === 'open') {
+            sendButton.disabled = false;
+        }
+    }
+    messageChannel.onclose = () => {
+        const state = messageChannel.readyState;
+        console.log(state);
+        sendButton.disabled = true;
+    }
+    messageChannel.onmessage = (event) => {
+        const li = document.createElement('li');
+        li.textContent = `Receive: ${event.data}`;
+        messages.appendChild(li);
+    }
+    sendButton.onclick = () => {
+        const li = document.createElement('li');
+        li.textContent = `Send: ${message.value}`;
+        messageChannel.send(message.value);
+        message.value = "";
+        messages.appendChild(li);
     }
 }
