@@ -41,6 +41,7 @@ class Peer {
     this.offerOptions = offerOptions;
     this.mediaConstraints = mediaConstraints;
     this.username = null;
+    this.users = [];
   }
 
   async start() {
@@ -55,6 +56,12 @@ class Peer {
   }
 
   async createAnswer(remoteUser, offer) {
+    if (
+      this.peerConnection
+      && this.peerConnection.signalingState !== 'stable') {
+      console.warn('PeerConnection is not in stable state, skipping answer creation');
+      return;
+    }
     await this.createPeerConnection(remoteUser);
     await this.peerConnection.setRemoteDescription(offer);
     const answer = await this.peerConnection.createAnswer();
@@ -112,7 +119,9 @@ const users = document.getElementById('users');
 callButton.disabled = true;
 hangupButton.disabled = true;
 startButton.addEventListener('click', start);
-callButton.addEventListener('click', call);
+callButton.addEventListener('click', async () => {
+  await call("peer1");
+});
 hangupButton.addEventListener('click', hangup);
 
 let peer;
@@ -134,7 +143,8 @@ async function start() {
             }));
             break;
           case "user-list":
-            users.innerHTML = message.users.map(user => `<li>${user}</li>`).join('');
+            peer.users = message.users.filter(user => user !== peer.username);
+            updateAvailableUsersList();
             break;
           case "username-accepted":
             peer.username = message.username;
@@ -143,12 +153,17 @@ async function start() {
           case "offer":
             callButton.disabled = true;
             hangupButton.disabled = false;
-            await peer.createAnswer("peer", message.data);
+            await peer.createAnswer(message.from, message.data);
             onConnectionStateChange();
             remoteVideo.srcObject = peer.mediaStreamManager.remoteStream;
             break;
           case "answer":
-            await peer.peerConnection.setRemoteDescription(message.data);
+            if (peer.peerConnection.signalingState === 'have-local-offer') {
+              await peer.peerConnection.setRemoteDescription(message.data);
+            } else {
+              console.warn('Cannot set remote description in current state:',
+                peer.peerConnection.signalingState);
+            }
             break;
           case "new-ice-candidate":
             await peer.peerConnection.addIceCandidate(message.data);
@@ -165,20 +180,23 @@ async function start() {
     startButton.disabled = true;
     callButton.disabled = false;
   } catch (e) {
-    alert(`getUserMedia() error: ${e.name}`);
+    alert(e);
   }
 }
 
-async function call() {
+async function call(remoteUser) {
   callButton.disabled = true;
   hangupButton.disabled = false;
-  await peer.call("peer1");
+  await peer.call(remoteUser);
   onConnectionStateChange();
   remoteVideo.srcObject = peer.mediaStreamManager.remoteStream;
 }
 
 async function hangup() {
-  peer.close();
+  if (peer) {
+    peer.close();
+    remoteVideo.srcObject = null;
+  }
   hangupButton.disabled = true;
   callButton.disabled = false;
 }
@@ -187,10 +205,26 @@ function onConnectionStateChange() {
   peer.peerConnection.onconnectionstatechange = () => {
     const state = peer.peerConnection.connectionState;
     if (
-      state === "disconnected" 
-      || state === "failed" 
+      state === "disconnected"
+      || state === "failed"
       || state === "closed") {
       hangup();
     }
   }
+}
+
+function updateAvailableUsersList() {
+  users.innerHTML = "";
+  peer.users.forEach(user => {
+    const li = document.createElement("li");
+    li.textContent = user;
+    li.onclick = async () => {
+      try {
+        await call(user);
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+    users.appendChild(li);
+  });
 }
