@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
-<head> 
+
+<head>
 
     <meta charset="utf-8">
     <meta name="description" content="WebRTC code samples">
@@ -15,28 +16,34 @@
 
     <title>p2p</title>
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet" type="text/css">
-    <link rel="stylesheet" href="./css/main.css"/>
+    <link rel="stylesheet" href="./css/main.css" />
 
 </head>
 
 <body>
-<div>
-    <p id="id"></p>
-    <p id="username"></p>
-</div>
-<div id="container">
-    <video id="localVideo" playsinline autoplay muted></video>
-    <video id="remoteVideo" playsinline autoplay></video>
-
-    <div class="box">
-        <button id="startButton">Start</button>
-        <button id="callButton">Call</button>
-        <button id="hangupButton">Hang Up</button>
+    <div>
+        <p id="id"></p>
+        <p id="username"></p>
     </div>
-</div>
-<ul id="users"></ul>
+    <div id="container">
+        <video id="localVideo" playsinline autoplay muted></video>
+        <video id="remoteVideo" playsinline autoplay></video>
 
-<script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
-<script src="./js/main.js" async></script>
+        <div class="box">
+            <button id="startButton">Start</button>
+            <button id="callButton">Call</button>
+            <button id="hangupButton">Hang Up</button>
+        </div>
+    </div>
+    <ul id="users"></ul>
+    <div>
+        <ul id="messages"></ul>
+        <input type="text" id="message">
+        <button type="button" id="send">Send</button>
+    </div>
+
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <script src="./js/main.js" async></script>
 </body>
+
 </html>
