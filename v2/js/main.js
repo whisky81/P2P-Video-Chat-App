@@ -33,65 +33,15 @@ class MediaStreamManager {
   }
 }
 
-class Profile {
-  #id = 0;
-  #name = "";
-  #availableUsers = [];
-
-  setId(id_) {
-    if (typeof id_ !== 'number' || id_ < 0) {
-      throw new TypeError("id must be a non-negative number");
-    }
-    this.#id = id_;
-  }
-
-  setName(name_) {
-    if (typeof name_ !== 'string' || name_.trim() === "") {
-      throw new TypeError("name must be a non-empty string");
-    }
-    this.#name = name_.trim();
-  }
-
-  setAvailableUsers(availableUsers_) {
-    if (!Array.isArray(availableUsers_)) {
-      throw new TypeError("availableUsers must be an array");
-    }
-    this.#availableUsers = availableUsers_.filter((username) => username !== this.#name);
-  }
-
-  isValidProfile() {
-    return this.id() > 0 && this.name().length > 0;
-  }
-
-  id() {
-    return this.#id;
-  }
-
-  name() {
-    return this.#name;
-  }
-
-  availableUsers() {
-    return [...this.#availableUsers];
-  }
-}
-
 class Peer {
   constructor(websocket, mediaStreamManager, offerOptions) {
     this.websocket = websocket;
-    this.profile = new Profile();
     this.mediaStreamManager = mediaStreamManager;
     this.peerConnection = null;
     this.offerOptions = offerOptions;
   }
 
-  static async from(signalingServerUrl, mediaConstraints, offerOptions) {
-    // const websocket = await new Promise((resolve, reject) => {
-    //   const ws = new WebSocket(signalingServerUrl);
-    //   ws.onopen = () => resolve(ws);
-    //   ws.onerror = (err) => reject(err);
-    // });
-    const websocket = null;
+  static async from(websocket, mediaConstraints, offerOptions) {
     const mediaStreamManager = await MediaStreamManager.start(mediaConstraints);
     return new Peer(websocket, mediaStreamManager, offerOptions);
   }
@@ -123,15 +73,9 @@ class Peer {
     this.close();
     this.peerConnection = new RTCPeerConnection();
     this.mediaStreamManager.addTrack(this.peerConnection);
-    this.peerConnection.onconnectionstatechange = () => {
-      const state = this.peerConnection.connectionState;
-      if (state === "disconnected" || state === "failed" || state === "closed") {
-        this.close();
-      }
-    };
     this.peerConnection.onicecandidate = (event) => {
       if (!event.candidate) return;
-      websocket.send(JSON.stringify({
+      this.websocket.send(JSON.stringify({
         type: "new-ice-candidate",
         to: remoteUser,
         data: event.candidate
@@ -141,7 +85,7 @@ class Peer {
 
   async createAndSendSdp(remoteUser, messageType) {
     if (!this.peerConnection) throw new Error("PeerConnection is not established");
-    websocket.send(JSON.stringify({
+    this.websocket.send(JSON.stringify({
       type: messageType,
       to: remoteUser,
       data: this.peerConnection.localDescription
@@ -171,48 +115,50 @@ callButton.addEventListener('click', call);
 hangupButton.addEventListener('click', hangup);
 
 let peer;
-let websocket = new WebSocket('ws://localhost:8000');
-websocket.onmessage = async (message) => {
-  try {
-    message = JSON.parse(message.data);
-    console.log(message);
-    switch (message.type) {
-      case "id":
-        idElement.textContent = `ID: ${message.id}`;
-        websocket.send(JSON.stringify({
-          type: "set-username",
-          username: "peer",
-        }));
-        break;
-      case "user-list":
-        users.innerHTML = message.users.map(user => `<li>${user}</li>`).join('');
-        break;
-      case "username-accepted":
-        usernameElement.textContent = `Username: ${message.username}`;
-        break;
-      case "offer":
-        callButton.disabled = true;
-        hangupButton.disabled = false;
-        await peer.createAnswer("peer", message.data);
-        remoteVideo.srcObject = peer.mediaStreamManager.remoteStream;
-        break;
-      case "answer":
-        await peer.peerConnection.setRemoteDescription(message.data);
-        break;
-      case "new-ice-candidate":
-        await peer.peerConnection.addIceCandidate(message.data);
-        break;
-      default:
-        throw new Error(`Unknown message type`);
-    }
-  } catch (error) {
-    console.error(error);
-  }
-}
+
 
 async function start() {
   try {
-    peer = await Peer.from(SIGNALING_SERVER_URL, MEDIA_CONSTRAINTS, OFFER_OPTIONS);
+    const websocket = new WebSocket('ws://localhost:8000');
+    websocket.onmessage = async (message) => {
+      try {
+        message = JSON.parse(message.data);
+        console.log(message);
+        switch (message.type) {
+          case "id":
+            idElement.textContent = `ID: ${message.id}`;
+            websocket.send(JSON.stringify({
+              type: "set-username",
+              username: "peer",
+            }));
+            break;
+          case "user-list":
+            users.innerHTML = message.users.map(user => `<li>${user}</li>`).join('');
+            break;
+          case "username-accepted":
+            usernameElement.textContent = `Username: ${message.username}`;
+            break;
+          case "offer":
+            callButton.disabled = true;
+            hangupButton.disabled = false;
+            await peer.createAnswer("peer", message.data);
+            onConnectionStateChange();
+            remoteVideo.srcObject = peer.mediaStreamManager.remoteStream;
+            break;
+          case "answer":
+            await peer.peerConnection.setRemoteDescription(message.data);
+            break;
+          case "new-ice-candidate":
+            await peer.peerConnection.addIceCandidate(message.data);
+            break;
+          default:
+            throw new Error(`Unknown message type`);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    peer = await Peer.from(websocket, MEDIA_CONSTRAINTS, OFFER_OPTIONS);
     localVideo.srcObject = peer.mediaStreamManager.localStream;
     startButton.disabled = true;
     callButton.disabled = false;
@@ -225,6 +171,7 @@ async function call() {
   callButton.disabled = true;
   hangupButton.disabled = false;
   await peer.call("peer1");
+  onConnectionStateChange();
   remoteVideo.srcObject = peer.mediaStreamManager.remoteStream;
 }
 
@@ -232,4 +179,13 @@ async function hangup() {
   peer.close();
   hangupButton.disabled = true;
   callButton.disabled = false;
+}
+
+function onConnectionStateChange() {
+  peer.peerConnection.onconnectionstatechange = () => {
+    const state = peer.peerConnection.connectionState;
+    if (state === "disconnected" || state === "failed" || state === "closed") {
+      hangup();
+    }
+  }
 }
