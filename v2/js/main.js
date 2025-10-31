@@ -34,16 +34,17 @@ class MediaStreamManager {
 }
 
 class Peer {
-  constructor(websocket, mediaStreamManager, offerOptions) {
+  constructor(websocket, offerOptions, mediaConstraints) {
     this.websocket = websocket;
-    this.mediaStreamManager = mediaStreamManager;
+    this.mediaStreamManager = null;
     this.peerConnection = null;
     this.offerOptions = offerOptions;
+    this.mediaConstraints = mediaConstraints;
+    this.username = null;
   }
 
-  static async from(websocket, mediaConstraints, offerOptions) {
-    const mediaStreamManager = await MediaStreamManager.start(mediaConstraints);
-    return new Peer(websocket, mediaStreamManager, offerOptions);
+  async start() {
+    this.mediaStreamManager = await MediaStreamManager.start(this.mediaConstraints);
   }
 
   async call(remoteUser) {
@@ -116,27 +117,28 @@ hangupButton.addEventListener('click', hangup);
 
 let peer;
 
-
 async function start() {
   try {
     const websocket = new WebSocket('ws://localhost:8000');
+    peer = new Peer(websocket, OFFER_OPTIONS, MEDIA_CONSTRAINTS);
     websocket.onmessage = async (message) => {
       try {
         message = JSON.parse(message.data);
-        console.log(message);
         switch (message.type) {
           case "id":
             idElement.textContent = `ID: ${message.id}`;
+            const username = prompt("Enter your username:", "peer");
             websocket.send(JSON.stringify({
               type: "set-username",
-              username: "peer",
+              username: username,
             }));
             break;
           case "user-list":
             users.innerHTML = message.users.map(user => `<li>${user}</li>`).join('');
             break;
           case "username-accepted":
-            usernameElement.textContent = `Username: ${message.username}`;
+            peer.username = message.username;
+            usernameElement.textContent = `Username: ${peer.username}`;
             break;
           case "offer":
             callButton.disabled = true;
@@ -155,10 +157,10 @@ async function start() {
             throw new Error(`Unknown message type`);
         }
       } catch (error) {
-        console.error(error);
+        throw error;
       }
     }
-    peer = await Peer.from(websocket, MEDIA_CONSTRAINTS, OFFER_OPTIONS);
+    await peer.start();
     localVideo.srcObject = peer.mediaStreamManager.localStream;
     startButton.disabled = true;
     callButton.disabled = false;
@@ -184,7 +186,10 @@ async function hangup() {
 function onConnectionStateChange() {
   peer.peerConnection.onconnectionstatechange = () => {
     const state = peer.peerConnection.connectionState;
-    if (state === "disconnected" || state === "failed" || state === "closed") {
+    if (
+      state === "disconnected" 
+      || state === "failed" 
+      || state === "closed") {
       hangup();
     }
   }
