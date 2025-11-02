@@ -24,6 +24,7 @@
     <div>
         <p id="id"></p>
         <p id="username"></p>
+        <p id="remote-user"></p>
     </div>
     <div id="container">
         <video id="localVideo" playsinline autoplay muted></video>
@@ -36,8 +37,9 @@
         </div>
     </div>
     <ul id="users"></ul>
-    <div>
+    <div id="message-file-container">
         <ul id="messages"></ul>
+        <input type="file" id="fileInput" name="files" />
         <input type="text" id="message">
         <button type="button" id="send">Send</button>
     </div>

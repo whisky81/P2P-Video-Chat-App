@@ -42,6 +42,7 @@ class Peer {
     this.mediaConstraints = mediaConstraints;
     this.username = null;
     this.users = [];
+    this.messageChannel = null;
   }
 
   async start() {
@@ -50,6 +51,7 @@ class Peer {
 
   async call(remoteUser) {
     await this.createPeerConnection(remoteUser);
+    this.messageChannel = this.peerConnection.createDataChannel("message");
     const offer = await this.peerConnection.createOffer(this.offerOptions);
     await this.peerConnection.setLocalDescription(offer);
     this.createAndSendSdp(remoteUser, "offer");
@@ -116,6 +118,13 @@ const remoteVideo = document.getElementById('remoteVideo');
 const idElement = document.getElementById('id');
 const usernameElement = document.getElementById('username');
 const users = document.getElementById('users');
+const messageFileContainer = document.getElementById('message-file-container');
+const messages = document.getElementById('messages');
+const messageInput = document.getElementById('message');
+const sendButton = document.getElementById('send');
+const remoteUserElement = document.getElementById('remote-user');
+const fileInput = document.getElementById('fileInput');
+fileInput.addEventListener('change', handleFileInputChange, false);
 callButton.disabled = true;
 hangupButton.disabled = true;
 startButton.addEventListener('click', start);
@@ -123,9 +132,9 @@ callButton.addEventListener('click', async () => {
   await call("peer1");
 });
 hangupButton.addEventListener('click', hangup);
-
+messageFileContainer.style.display = "none";
 let peer;
-
+const metadataFiles = [];
 async function start() {
   try {
     const websocket = new WebSocket('ws://localhost:8000');
@@ -155,7 +164,9 @@ async function start() {
             hangupButton.disabled = false;
             await peer.createAnswer(message.from, message.data);
             onConnectionStateChange();
+            setUpMessageChannel();
             remoteVideo.srcObject = peer.mediaStreamManager.remoteStream;
+            remoteUserElement.textContent = `Connected to ${message.from}`;
             break;
           case "answer":
             if (peer.peerConnection.signalingState === 'have-local-offer') {
@@ -168,6 +179,10 @@ async function start() {
           case "new-ice-candidate":
             await peer.peerConnection.addIceCandidate(message.data);
             break;
+          case "metadata-file":
+            metadataFiles.push(message.metadata);
+            console.log(metadataFiles);
+            break;
           default:
             throw new Error(`Unknown message type`);
         }
@@ -179,6 +194,8 @@ async function start() {
     localVideo.srcObject = peer.mediaStreamManager.localStream;
     startButton.disabled = true;
     callButton.disabled = false;
+    messageFileContainer.style.display = "block";
+    sendButton.disabled = true;
   } catch (e) {
     alert(e);
   }
@@ -189,11 +206,15 @@ async function call(remoteUser) {
   hangupButton.disabled = false;
   await peer.call(remoteUser);
   onConnectionStateChange();
+  setUpMessageChannel();
   remoteVideo.srcObject = peer.mediaStreamManager.remoteStream;
+  remoteUserElement.textContent = `Connected to ${remoteUser}`;
 }
 
 async function hangup() {
   if (peer) {
+    messages.innerHTML = "";
+    messageInput.value = "";
     peer.close();
     remoteVideo.srcObject = null;
   }
@@ -227,4 +248,57 @@ function updateAvailableUsersList() {
     };
     users.appendChild(li);
   });
+}
+
+function setUpMessageChannel() {
+  messages.innerHTML = "";
+  messageInput.value = "";
+  if (peer.messageChannel) {
+    dataChannelEventListener(peer.messageChannel);
+  } else {
+    peer.peerConnection.ondatachannel = (event) => {
+      dataChannelEventListener(event.channel);
+    }
+  }
+}
+
+function dataChannelEventListener(messageChannel) {
+  messageChannel.onopen = () => {
+    const state = messageChannel.readyState;
+    if (state === 'open') {
+      sendButton.disabled = false;
+    }
+  }
+  messageChannel.onclose = () => {
+    const state = messageChannel.readyState;
+    sendButton.disabled = true;
+  }
+  messageChannel.onmessage = (event) => {
+    const li = document.createElement('li');
+    li.textContent = event.data;
+    li.classList.add('receive');
+    messages.appendChild(li);
+  }
+  sendButton.onclick = () => {
+    const li = document.createElement('li');
+    li.textContent = messageInput.value;
+    li.classList.add('send');
+    messageChannel.send(messageInput.value);
+    messageInput.value = "";
+    messages.appendChild(li);
+  }
+}
+
+function handleFileInputChange() {
+  const file = fileInput.files[0];
+  if (!file) return;
+  const metadataFile = {
+    name: file.name,
+    size: file.size,
+    type: file.type,
+    lastModified: file.lastModified,
+    lastModifiedDate: file.lastModifiedDate,
+    webkitRelativePath: file.webkitRelativePath
+  };
+  console.log(metadataFile);
 }

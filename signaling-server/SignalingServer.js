@@ -1,4 +1,5 @@
 import http from "http";
+import { type } from "os";
 import { WebSocketServer, WebSocket } from "ws";
 
 class SignalingServer {
@@ -98,6 +99,13 @@ class SignalingServer {
                     this.#relaySignalingMessage(websocket, request, message);
                 } else if (message.type === "set-username") {
                     this.#setUsername(websocket, request, message);
+                } else if (message.type === "metadata-file") {
+                    // {
+                    //     type: "metadata-file",
+                    //     to: "",
+                    //     metadata: {}
+                    // }
+                    this.#relayMessage(websocket, message);
                 } else {
                     websocket.send(JSON.stringify({
                         type: "unknow-type"
@@ -139,6 +147,10 @@ class SignalingServer {
                 data: sdp | ice-candiate // the actual signaling data (SDP or ICE candidate)
             }`)
         }
+        this.#relayMessage(websocket, message);
+    }
+
+    #relayMessage(websocket, message) {
         message.from = websocket.username || websocket.clientID;
         const target = message.to;
         const targetConnection = this.#connectionList.find((conn) => (conn.username === target || conn.clientID == target) && conn.readyState === WebSocket.OPEN);
