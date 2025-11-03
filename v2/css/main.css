@@ -1,4 +1,4 @@
-#message-file-container {
+/* #message-file-container {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -106,4 +106,4 @@
 @keyframes fadeInUp {
   from { transform: translateY(10px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
-}
+} */
