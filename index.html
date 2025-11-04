@@ -1,43 +1,60 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2p Video Chat</title>
-    <link rel="stylesheet" href="./styles.css">
+    <meta charset="utf-8">
+    <meta name="description" content="WebRTC code samples">
+    <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1, maximum-scale=1">
+    <meta itemprop="description" content="Client-side WebRTC code samples">
+    <meta itemprop="name" content="WebRTC code samples">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta id="theme-color" name="theme-color" content="#ffffff">
+
+    <base target="_blank">
+
+    <title>p2p</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="./main.css" />
+
 </head>
 
 <body>
-    <div id="error-popup" class="popup">
-        <div class="popup-content">
-            <span id="close-popup">&times;</span>
-            <h3>Error</h3>
-            <p id="error-message"></p>
+    <div>
+        <p id="id"></p>
+        <p id="username"></p>
+        <p id="remote-user"></p>
+    </div>
+    <div id="container">
+        <video id="localVideo" playsinline autoplay muted></video>
+        <video id="remoteVideo" playsinline autoplay></video>
+
+        <div>
+            <button id="camera">Camera</button>
+            <button id="mic">Microphone</button>
+            <button id="screenShare">Share Screen</button>
+        </div>
+
+        <div class="box">
+            <button id="startButton">Start</button>
+            <button id="callButton">Call</button>
+            <button id="hangupButton">Hang Up</button>
         </div>
     </div>
-    <h2 id="username"></h2>
-    <div id="videos">
-        <video class="video-player" id="local-peer" autoplay playsinline></video>
-        <video class="video-player" id="remote-peer" autoplay playsinline></video>
-    </div>
-    <p id="remote-user"></p>
-    <div id="controls">
-        <button id="camera">Camera</button>
-        <button id="microphone">Microphone</button>
-        <button id="disconnect">Disconnect</button>
-        <button id="next">Next</button>
-    </div>
-    <div>
-        <h3>Available Users</h3>
-        <ul id="available-users"></ul>
-    </div>
-    <div>
+    <ul id="users"></ul>
+    <div id="message-file-container">
         <ul id="messages"></ul>
         <input type="text" id="message">
-        <button type="button" id="send">Send</button>
+        <button type="button" id="send">Send Message</button>
+        <div>
+            <form id="fileInfo">
+                <input type="file" id="fileInput" name="files" />
+            </form>
+            <button disabled id="sendFile">Send File</button>
+        </div>
     </div>
-     <script type="module" src="./main.js"></script>
+
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <script src="./main.js" async></script>
 </body>
 
 </html>
