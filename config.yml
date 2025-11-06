@@ -1,0 +1,11 @@
+version: "3"
+agent:
+    authtoken: <token>
+
+tunnels:
+  signaling-server:
+    proto: http
+    addr: 8000
+  client:
+    proto: http
+    addr: 8080

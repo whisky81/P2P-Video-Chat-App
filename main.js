@@ -1,234 +1,6 @@
-class MediaStreamManager {
-  constructor() {
-    this.localStream = null;
-    this.remoteStream = null;
-    this.screenStream = null;
-    this.isScreenSharing = false;
-  }
-
-  static async start(mediaConstraints) {
-    const localStream = await navigator
-      .mediaDevices
-      .getUserMedia(mediaConstraints);
-    const manager = new MediaStreamManager();
-    manager.localStream = localStream;
-    manager.remoteStream = new MediaStream();
-    return manager;
-  }
-
-  addTrack(peerConnection) {
-    this.localStream.getTracks().forEach((track) => {
-      peerConnection.addTrack(track, this.localStream);
-    });
-    peerConnection.ontrack = (event) => {
-      event.streams[0].getTracks().forEach(track => {
-        if (!this.remoteStream.getTracks().some(t => t.id === track.id)) {
-          this.remoteStream.addTrack(track);
-        }
-      });
-    };
-  }
-
-  close() {
-    this.remoteStream.getTracks().forEach(track => track.stop());
-    this.remoteStream = new MediaStream();
-    if (this.screenStream) {
-      this.screenStream.getTracks().forEach(track => track.stop());
-      this.screenStream = null;
-    }
-    this.isScreenSharing = false;
-  }
-
-  toggleCamera() {
-    const videoTrack = this.localStream.getTracks().find((track) => track.kind === 'video');
-    const newState = !videoTrack.enabled;
-    videoTrack.enabled = newState;
-    return newState;
-  }
-
-  toggleMicrophone() {
-    const audioTrack = this.localStream.getTracks().find((track) => track.kind === 'audio');
-    const newState = !audioTrack.enabled;
-    audioTrack.enabled = newState;
-    return newState;
-  }
-
-  async toggleScreenShare(peerConnection) {
-    if (!this.isScreenSharing) {
-      // Start screen sharing
-      try {
-        this.screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-          video: true,
-          audio: true 
-        });
-
-        // Store the original video track to revert back later
-        this.originalVideoTrack = this.localStream.getVideoTracks()[0];
-        
-        // Replace the video track in local stream with screen share track
-        this.localStream.removeTrack(this.originalVideoTrack);
-        const screenVideoTrack = this.screenStream.getVideoTracks()[0];
-        this.localStream.addTrack(screenVideoTrack);
-
-        // Replace the track in peer connection
-        const sender = peerConnection.getSenders().find(s => 
-          s.track && s.track.kind === 'video'
-        );
-        if (sender) {
-          await sender.replaceTrack(screenVideoTrack);
-        }
-
-        this.isScreenSharing = true;
-
-        // Handle when user stops screen sharing via browser UI
-        screenVideoTrack.onended = () => {
-          this.stopScreenShare(peerConnection);
-        };
-
-        return true;
-      } catch (error) {
-        console.error('Error starting screen share:', error);
-        return false;
-      }
-    } else {
-      // Stop screen sharing
-      this.stopScreenShare(peerConnection);
-      return false;
-    }
-  }
-
-  async stopScreenShare(peerConnection) {
-    if (!this.isScreenSharing || !this.originalVideoTrack) return;
-
-    // Stop screen share tracks
-    if (this.screenStream) {
-      this.screenStream.getTracks().forEach(track => track.stop());
-      this.screenStream = null;
-    }
-
-    // Replace back with original camera track
-    const currentVideoTrack = this.localStream.getVideoTracks()[0];
-    this.localStream.removeTrack(currentVideoTrack);
-    this.localStream.addTrack(this.originalVideoTrack);
-
-    // Replace track in peer connection
-    const sender = peerConnection.getSenders().find(s => 
-      s.track && s.track.kind === 'video'
-    );
-    if (sender) {
-      await sender.replaceTrack(this.originalVideoTrack);
-    }
-
-    this.isScreenSharing = false;
-    this.originalVideoTrack = null;
-  }
-}
-
-class Peer {
-  constructor(websocket, offerOptions, mediaConstraints) {
-    this.websocket = websocket;
-    this.mediaStreamManager = null;
-    this.peerConnection = null;
-    this.offerOptions = offerOptions;
-    this.mediaConstraints = mediaConstraints;
-    this.username = null;
-    this.users = [];
-    this.messageChannel = null;
-    this.fileChannel = null;
-    this.remoteUser = null;
-    this.receiveBuffer = [];
-    this.receivedSize = 0;
-  }
-
-  async start() {
-    this.mediaStreamManager = await MediaStreamManager.start(this.mediaConstraints);
-  }
-
-  async call(remoteUser) {
-    await this.createPeerConnection(remoteUser);
-    this.messageChannel = this.peerConnection.createDataChannel("message");
-    this.fileChannel = this.peerConnection.createDataChannel("file");
-    this.fileChannel.binaryType = 'arraybuffer';
-    const offer = await this.peerConnection.createOffer(this.offerOptions);
-    await this.peerConnection.setLocalDescription(offer);
-    this.createAndSendSdp(remoteUser, "offer");
-  }
-
-  async createAnswer(remoteUser, offer) {
-    if (
-      this.peerConnection
-      && this.peerConnection.signalingState !== 'stable') {
-      console.warn('PeerConnection is not in stable state, skipping answer creation');
-      return;
-    }
-    await this.createPeerConnection(remoteUser);
-    await this.peerConnection.setRemoteDescription(offer);
-    const answer = await this.peerConnection.createAnswer();
-    await this.peerConnection.setLocalDescription(answer);
-    this.createAndSendSdp(remoteUser, "answer");
-  }
-
-  close() {
-    this.resetFileTransfer();
-    if (this.messageChannel) {
-      this.messageChannel.close();
-      this.messageChannel = null;
-    }
-    if (this.fileChannel) {
-      this.fileChannel.close();
-      this.fileChannel = null;
-    }
-    this.mediaStreamManager.close();
-    if (this.peerConnection) {
-      this.peerConnection.close();
-      this.peerConnection = null;
-      this.remoteUser = null;
-    }
-  }
-
-  resetFileTransfer() {
-    this.receivedSize = 0;
-    this.receiveBuffer = [];
-  }
-
-  async createPeerConnection(remoteUser) {
-    this.close();
-    this.peerConnection = new RTCPeerConnection();
-    this.mediaStreamManager.addTrack(this.peerConnection);
-    this.peerConnection.onicecandidate = (event) => {
-      if (!event.candidate) return;
-      this.websocket.send(JSON.stringify({
-        type: "new-ice-candidate",
-        to: remoteUser,
-        data: event.candidate
-      }));
-    }
-  }
-
-  async createAndSendSdp(remoteUser, messageType) {
-    if (!this.peerConnection) throw new Error("PeerConnection is not established");
-    this.websocket.send(JSON.stringify({
-      type: messageType,
-      to: remoteUser,
-      data: this.peerConnection.localDescription
-    }));
-  }
-
-  async toggleScreenShare() {
-    if (!this.peerConnection) {
-      alert('Please start a call first');
-      return false;
-    }
-    return await this.mediaStreamManager.toggleScreenShare(this.peerConnection);
-  }
-}
-
-const MEDIA_CONSTRAINTS = { audio: true, video: true };
-const SIGNALING_SERVER_URL = "ws://localhost:8000";
-const OFFER_OPTIONS = {
-  offerToReceiveAudio: 1,
-  offerToReceiveVideo: 1
-};
+// ngrok start --config ./config.yml --all
+import Peer from "./Peer.js";
+import * as Config from "./Config.js";
 
 const startButton = document.getElementById('startButton');
 const callButton = document.getElementById('callButton');
@@ -266,8 +38,12 @@ const metadataFiles = [];
 
 async function start() {
   try {
-    const websocket = new WebSocket('ws://localhost:8000');
-    peer = new Peer(websocket, OFFER_OPTIONS, MEDIA_CONSTRAINTS);
+    const websocket = new WebSocket(Config.SIGNALING_SERVER_URL);
+    peer = new Peer(
+      websocket, 
+      Config.OFFER_OPTIONS, 
+      Config.MEDIA_CONSTRAINTS, 
+      Config.RTC_PEER_CONNECTION_CONFIG);
     websocket.onmessage = async (message) => {
       try {
         message = JSON.parse(message.data);
@@ -328,13 +104,13 @@ async function start() {
     sendButton.disabled = true;
     cameraButton.disabled = false;
     micButton.disabled = false;
-    
+
     cameraButton.onclick = () => {
       if (!peer) return;
       const status = peer.mediaStreamManager.toggleCamera();
       cameraButton.style.backgroundColor = status ? "green" : "red";
     }
-    
+
     micButton.onclick = () => {
       if (!peer) return;
       const status = peer.mediaStreamManager.toggleMicrophone();
@@ -373,10 +149,10 @@ async function hangup() {
 
 async function toggleScreenShare() {
   if (!peer) return;
-  
+
   const isNowSharing = await peer.toggleScreenShare();
   screenShareButton.style.backgroundColor = isNowSharing ? "red" : "";
-  
+
   if (isNowSharing) {
     screenShareButton.textContent = "Stop Sharing";
   } else {
@@ -391,7 +167,7 @@ function onConnectionStateChange() {
       state === "disconnected"
       || state === "failed"
       || state === "closed") {
-      await  peer.mediaStreamManager.stopScreenShare(peer.peerConnection);
+      await peer.mediaStreamManager.stopScreenShare(peer.peerConnection);
       hangup();
     }
   }
