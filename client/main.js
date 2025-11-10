@@ -55,7 +55,6 @@ async function start() {
             break;
           case "user-list":
             peer.users = message.users.filter(user => user !== peer.username);
-            updateAvailableUsersList();
             break;
           case "username-accepted":
             peer.username = message.username;
@@ -179,22 +178,6 @@ function onConnectionStateChange() {
       hangup();
     }
   }
-}
-
-function updateAvailableUsersList() {
-  users.innerHTML = "";
-  peer.users.forEach(user => {
-    const li = document.createElement("li");
-    li.textContent = user;
-    li.onclick = async () => {
-      try {
-        await call(user);
-      } catch (error) {
-        alert(error.message);
-      }
-    };
-    users.appendChild(li);
-  });
 }
 
 function setUpMessageChannel() {
