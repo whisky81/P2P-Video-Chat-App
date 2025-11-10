@@ -58,7 +58,7 @@ npm start
 1. Open your web browser
 2. Navigate to the client URL (typically `http://localhost:8080`)
 3. Allow camera and microphone permissions
-4. Share the room URL with another user to start a video call
+4. Open another tab to start a call
 
 ## Advanced Configuration
 
