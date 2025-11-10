@@ -55,22 +55,18 @@ class MediaStreamManager {
 
   async toggleScreenShare(peerConnection) {
     if (!this.isScreenSharing) {
-      // Start screen sharing
       try {
         this.screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
           audio: true
         });
 
-        // Store the original video track to revert back later
         this.originalVideoTrack = this.localStream.getVideoTracks()[0];
 
-        // Replace the video track in local stream with screen share track
         this.localStream.removeTrack(this.originalVideoTrack);
         const screenVideoTrack = this.screenStream.getVideoTracks()[0];
         this.localStream.addTrack(screenVideoTrack);
 
-        // Replace the track in peer connection
         const sender = peerConnection.getSenders().find(s =>
           s.track && s.track.kind === 'video'
         );
@@ -80,7 +76,6 @@ class MediaStreamManager {
 
         this.isScreenSharing = true;
 
-        // Handle when user stops screen sharing via browser UI
         screenVideoTrack.onended = () => {
           this.stopScreenShare(peerConnection);
         };
@@ -91,7 +86,6 @@ class MediaStreamManager {
         return false;
       }
     } else {
-      // Stop screen sharing
       this.stopScreenShare(peerConnection);
       return false;
     }
@@ -100,18 +94,15 @@ class MediaStreamManager {
   async stopScreenShare(peerConnection) {
     if (!this.isScreenSharing || !this.originalVideoTrack) return;
 
-    // Stop screen share tracks
     if (this.screenStream) {
       this.screenStream.getTracks().forEach(track => track.stop());
       this.screenStream = null;
     }
 
-    // Replace back with original camera track
     const currentVideoTrack = this.localStream.getVideoTracks()[0];
     this.localStream.removeTrack(currentVideoTrack);
     this.localStream.addTrack(this.originalVideoTrack);
 
-    // Replace track in peer connection
     const sender = peerConnection.getSenders().find(s =>
       s.track && s.track.kind === 'video'
     );

@@ -1,6 +1,5 @@
-// ngrok start --config ./config.yml --all
-import Peer from "./Peer.js";
-import * as Config from "./Config.js";
+import Peer from "./core/Peer.js";
+import * as Config from "./config/Config.js";
 
 const startButton = document.getElementById('startButton');
 const callButton = document.getElementById('callButton');
@@ -27,9 +26,7 @@ screenShareButton.disabled = true;
 callButton.disabled = true;
 hangupButton.disabled = true;
 startButton.addEventListener('click', start);
-callButton.addEventListener('click', async () => {
-  await call("peer1");
-});
+
 hangupButton.addEventListener('click', hangup);
 screenShareButton.addEventListener('click', toggleScreenShare);
 messageFileContainer.style.display = "none";
@@ -40,9 +37,9 @@ async function start() {
   try {
     const websocket = new WebSocket(Config.SIGNALING_SERVER_URL);
     peer = new Peer(
-      websocket, 
-      Config.OFFER_OPTIONS, 
-      Config.MEDIA_CONSTRAINTS, 
+      websocket,
+      Config.OFFER_OPTIONS,
+      Config.MEDIA_CONSTRAINTS,
       Config.RTC_PEER_CONNECTION_CONFIG);
     websocket.onmessage = async (message) => {
       try {
@@ -116,6 +113,17 @@ async function start() {
       const status = peer.mediaStreamManager.toggleMicrophone();
       micButton.style.backgroundColor = status ? "green" : "red";
     }
+
+    callButton.addEventListener('click', async () => {
+      if (!peer) return;
+      if (peer.users.length === 0) {
+        alert("No available users to call.");
+        return;
+      }
+      const randomUserIndex = Math.floor(Math.random() * peer.users.length);
+      const randomUser = peer.users[randomUserIndex];
+      await call(randomUser);
+    });
   } catch (e) {
     alert(e);
   }
@@ -221,13 +229,13 @@ function dataChannelEventListener(messageChannel) {
   }
   messageChannel.onmessage = (event) => {
     const li = document.createElement('li');
-    li.textContent = event.data;
+    li.textContent = `Received: ${event.data}`;
     li.classList.add('receive');
     messages.appendChild(li);
   }
   sendButton.onclick = () => {
     const li = document.createElement('li');
-    li.textContent = messageInput.value;
+    li.textContent = `Sent: ${messageInput.value}`;
     li.classList.add('send');
     messageChannel.send(messageInput.value);
     messageInput.value = "";
@@ -247,6 +255,7 @@ function fileChannelEventListener(fileChannel) {
     sendFileButton.disabled = true;
   }
   fileChannel.onmessage = (event) => {
+    setTimeout(() => {}, 3000);
     if (metadataFiles.length === 0) return;
     const metadataFile = metadataFiles[metadataFiles.length - 1];
 
